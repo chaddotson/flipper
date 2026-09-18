@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FlipGrid // Corruption</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #081019;
+      --panel: #101a25;
+      --panel-2: #0c141e;
+      --text: #edf6ff;
+      --muted: #90a3b6;
+      --line: #243244;
+      --accent: #6ee7d8;
+      --danger: #ff7a66;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(110, 231, 216, 0.08), transparent 34rem),
+        linear-gradient(180deg, #081019 0%, #050a10 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .game-shell {
+      width: min(100%, 1040px);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 290px;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .play-area,
+    .sidebar {
+      background: rgba(16, 26, 37, 0.88);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(14px);
+    }
+
+    .play-area { padding: 18px; }
+    .sidebar { padding: 20px; }
+
+    .eyebrow {
+      margin: 0 0 6px;
+      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.75rem, 4vw, 3.25rem);
+      line-height: 0.95;
+      letter-spacing: -0.055em;
+    }
+
+    .subtitle {
+      margin: 10px 0 18px;
+      color: var(--muted);
+      max-width: 60ch;
+      line-height: 1.5;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      overflow: hidden;
+      border-radius: 16px;
+      background: #061019;
+      border: 1px solid #1f3144;
+      touch-action: manipulation;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      outline: none;
+    }
+
+    canvas:focus-visible {
+      box-shadow: inset 0 0 0 3px rgba(110, 231, 216, 0.7);
+    }
+
+    .message {
+      position: absolute;
+      inset: auto 12px 12px 12px;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .message > span {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 7px 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      background: rgba(4, 10, 16, 0.78);
+      color: #dbe7f2;
+      font-size: 0.82rem;
+      font-weight: 750;
+      letter-spacing: 0.02em;
+      backdrop-filter: blur(8px);
+    }
+
+    .message .danger { color: #ffd2cb; border-color: rgba(255, 122, 102, 0.38); }
+    .message .win { color: #bffbf0; border-color: rgba(110, 231, 216, 0.46); }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .stat {
+      min-width: 0;
+      padding: 12px;
+      border-radius: 13px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+    }
+
+    .stat-label {
+      color: var(--muted);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+      font-weight: 750;
+    }
+
+    .stat-value {
+      margin-top: 5px;
+      font-size: 1.18rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .sidebar h2 {
+      margin: 0 0 14px;
+      font-size: 1rem;
+    }
+
+    .control-group {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    label {
+      color: #d8e5f1;
+      font-size: 0.82rem;
+      font-weight: 720;
+    }
+
+    select,
+    input[type="range"],
+    button {
+      width: 100%;
+    }
+
+    select {
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 0 12px;
+      background: #09131e;
+      color: var(--text);
+      font: inherit;
+      font-size: 0.95rem;
+    }
+
+    input[type="range"] { accent-color: var(--accent); }
+
+    .range-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .range-value {
+      min-width: 42px;
+      text-align: right;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+    }
+
+    button {
+      min-height: 46px;
+      border: 0;
+      border-radius: 12px;
+      padding: 0 14px;
+      background: var(--accent);
+      color: #05221f;
+      font: inherit;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    button:hover { filter: brightness(1.06); }
+    button:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 3px solid rgba(110, 231, 216, 0.28);
+      outline-offset: 2px;
+    }
+
+    .secondary {
+      margin-top: 10px;
+      background: #182638;
+      color: #dce9f5;
+      border: 1px solid #2c4058;
+    }
+
+    .how-to {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.55;
+    }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--muted);
+      font-size: 0.79rem;
+    }
+
+    .swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 5px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(255,255,255,0.14);
+    }
+
+    .state-a { background: #18283a; }
+    .state-b { background: #7fe7d7; }
+    .corrupt { background: #ff7a66; }
+
+    .error {
+      display: none;
+      padding: 18px;
+      border-radius: 14px;
+      background: #2a1111;
+      border: 1px solid #73302b;
+      color: #ffd8d3;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 820px) {
+      body { padding: 12px; }
+      .game-shell { grid-template-columns: 1fr; }
+      .sidebar { order: 2; }
+    }
+
+    @media (max-width: 480px) {
+      .play-area, .sidebar { border-radius: 15px; padding: 12px; }
+      .stats { gap: 7px; }
+      .stat { padding: 9px; }
+      .stat-value { font-size: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <main class="game-shell">
+    <section class="play-area" aria-labelledby="game-title">
+      <p class="eyebrow">WebGL puzzle</p>
+      <h1 id="game-title">FlipGrid // Corruption</h1>
+      <p class="subtitle">Flip tiles until the whole grid matches. Corruption periodically warns, then flips tiles against you.</p>
+
+      <div id="error" class="error" role="alert"></div>
+
+      <div id="canvasWrap" class="canvas-wrap">
+        <canvas id="gameCanvas" tabindex="0" aria-label="FlipGrid game board. Click or tap tiles to flip them."></canvas>
+        <div class="message" aria-live="polite"><span id="messageText">Make every tile match.</span></div>
+      </div>
+
+      <div class="stats" aria-label="Game statistics">
+        <div class="stat">
+          <div class="stat-label">Moves</div>
+          <div id="moves" class="stat-value">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Time</div>
+          <div id="time" class="stat-value">0.0s</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Corruptions</div>
+          <div id="corruptions" class="stat-value">0</div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="sidebar" aria-label="Game configuration">
+      <h2>Configuration</h2>
+
+      <div class="control-group">
+        <label for="gridSize">Grid size</label>
+        <div class="range-row">
+          <input id="gridSize" type="range" min="3" max="12" step="1" value="5" />
+          <output id="gridSizeValue" class="range-value" for="gridSize">5×5</output>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label for="pressure">Corruption pressure</label>
+        <select id="pressure">
+          <option value="low">Low — slower attacks</option>
+          <option value="medium" selected>Medium — balanced</option>
+          <option value="high">High — frequent attacks</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="pattern">Corruption pattern</label>
+        <select id="pattern">
+          <option value="single" selected>Single — random tiles</option>
+          <option value="burst">Burst — extra random tiles</option>
+          <option value="cross">Cross — tile + neighbors</option>
+        </select>
+      </div>
+
+      <button id="newGame" type="button">New game</button>
+      <button id="reroll" class="secondary" type="button">Reroll board</button>
+
+      <div class="how-to">
+        <strong style="color:#e8f3fc">Goal</strong><br />
+        Get every tile into either the dark state or the light state. A win only locks in after the board stays uniform briefly, so a late corruption can still break it.
+
+        <div class="legend" aria-label="Tile legend">
+          <div class="legend-row"><span class="swatch state-a"></span> Dark state</div>
+          <div class="legend-row"><span class="swatch state-b"></span> Light state</div>
+          <div class="legend-row"><span class="swatch corrupt"></span> Incoming corruption warning</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const canvas = document.getElementById('gameCanvas');
+      const canvasWrap = document.getElementById('canvasWrap');
+      const errorBox = document.getElementById('error');
+      const messageText = document.getElementById('messageText');
+      const movesEl = document.getElementById('moves');
+      const timeEl = document.getElementById('time');
+      const corruptionsEl = document.getElementById('corruptions');
+      const gridSizeInput = document.getElementById('gridSize');
+      const gridSizeValue = document.getElementById('gridSizeValue');
+      const pressureSelect = document.getElementById('pressure');
+      const patternSelect = document.getElementById('pattern');
+      const newGameBtn = document.getElementById('newGame');
+      const rerollBtn = document.getElementById('reroll');
+
+      const gl = canvas.getContext('webgl2', {
+        antialias: true,
+        alpha: false,
+        premultipliedAlpha: false
+      });
+
+      if (!gl) {
+        canvasWrap.style.display = 'none';
+        errorBox.style.display = 'block';
+        errorBox.textContent = 'This game requires WebGL 2. Please open it in a current version of Chrome, Edge, Firefox, or Safari with hardware acceleration enabled.';
+        return;
+      }
+
+      const vertexSource = `#version 300 es
+        precision highp float;
+
+        layout(location = 0) in vec2 a_position;
+        layout(location = 1) in vec2 a_offset;
+        layout(location = 2) in float a_state;
+        layout(location = 3) in float a_anim;
+        layout(location = 4) in float a_corrupt;
+
+        uniform float u_grid;
+
+        out vec2 v_local;
+        out float v_state;
+        out float v_corrupt;
+        out float v_flip;
+
+        const float PI = 3.141592653589793;
+
+        void main() {
+          float cell = 2.0 / u_grid;
+          float gapScale = mix(0.80, 0.90, clamp((u_grid - 3.0) / 9.0, 0.0, 1.0));
+          float flipScale = max(0.05, abs(cos(a_anim * PI)));
+
+          vec2 local = a_position * cell * gapScale;
+          local.x *= flipScale;
+
+          gl_Position = vec4(a_offset + local, 0.0, 1.0);
+          v_local = a_position;
+          v_state = a_anim < 0.5 ? 1.0 - a_state : a_state;
+          v_corrupt = a_corrupt;
+          v_flip = flipScale;
+        }
+      `;
+
+      const fragmentSource = `#version 300 es
+        precision highp float;
+
+        in vec2 v_local;
+        in float v_state;
+        in float v_corrupt;
+        in float v_flip;
+
+        uniform float u_time;
+
+        out vec4 outColor;
+
+        float roundedBoxSDF(vec2 p, vec2 b, float r) {
+          vec2 q = abs(p) - b + r;
+          return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+        }
+
+        void main() {
+          float d = roundedBoxSDF(v_local, vec2(0.46), 0.085);
+          if (d > 0.0) discard;
+
+          vec3 darkColor = vec3(0.075, 0.135, 0.205);
+          vec3 lightColor = vec3(0.50, 0.91, 0.84);
+          vec3 base = mix(darkColor, lightColor, v_state);
+
+          float edge = smoothstep(0.04, -0.02, d);
+          float sheen = 0.08 * (1.0 - clamp(length(v_local - vec2(-0.16, 0.18)), 0.0, 0.7));
+          base += sheen * edge;
+
+          if (v_corrupt > 0.5) {
+            float pulse = 0.5 + 0.5 * sin(u_time * 13.0);
+            vec3 danger = vec3(1.0, 0.32, 0.20);
+            base = mix(base, danger, 0.46 + pulse * 0.34);
+          }
+
+          base *= 0.88 + 0.12 * v_flip;
+          float border = smoothstep(0.035, 0.0, abs(d));
+          base += border * 0.07;
+
+          outColor = vec4(base, 1.0);
+        }
+      `;
+
+      function compileShader(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const info = gl.getShaderInfoLog(shader);
+          gl.deleteShader(shader);
+          throw new Error(info || 'Shader compilation failed.');
+        }
+        return shader;
+      }
+
+      function createProgram() {
+        const program = gl.createProgram();
+        const vs = compileShader(gl.VERTEX_SHADER, vertexSource);
+        const fs = compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const info = gl.getProgramInfoLog(program);
+          gl.deleteProgram(program);
+          throw new Error(info || 'Program linking failed.');
+        }
+        return program;
+      }
+
+      let program;
+      try {
+        program = createProgram();
+      } catch (err) {
+        canvasWrap.style.display = 'none';
+        errorBox.style.display = 'block';
+        errorBox.textContent = 'WebGL shader setup failed: ' + err.message;
+        return;
+      }
+
+      const quadBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -0.5, -0.5,
+         0.5, -0.5,
+        -0.5,  0.5,
+        -0.5,  0.5,
+         0.5, -0.5,
+         0.5,  0.5
+      ]), gl.STATIC_DRAW);
+
+      const instanceBuffer = gl.createBuffer();
+      const vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+      gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+      const stride = 5 * 4;
+      gl.enableVertexAttribArray(1);
+      gl.vertexAttribPointer(1, 2, gl.FLOAT, false, stride, 0);
+      gl.vertexAttribDivisor(1, 1);
+
+      gl.enableVertexAttribArray(2);
+      gl.vertexAttribPointer(2, 1, gl.FLOAT, false, stride, 2 * 4);
+      gl.vertexAttribDivisor(2, 1);
+
+      gl.enableVertexAttribArray(3);
+      gl.vertexAttribPointer(3, 1, gl.FLOAT, false, stride, 3 * 4);
+      gl.vertexAttribDivisor(3, 1);
+
+      gl.enableVertexAttribArray(4);
+      gl.vertexAttribPointer(4, 1, gl.FLOAT, false, stride, 4 * 4);
+      gl.vertexAttribDivisor(4, 1);
+
+      gl.bindVertexArray(null);
+
+      const uGrid = gl.getUniformLocation(program, 'u_grid');
+      const uTime = gl.getUniformLocation(program, 'u_time');
+
+      const pressureSettings = {
+        low: { interval: 5200, warning: 950, baseCount: 1 },
+        medium: { interval: 3600, warning: 760, baseCount: 1 },
+        high: { interval: 2300, warning: 560, baseCount: 2 }
+      };
+
+      let gridSize = Number(gridSizeInput.value);
+      let tiles = [];
+      let moves = 0;
+      let corruptionEvents = 0;
+      let startedAt = performance.now();
+      let finishedAt = null;
+      let won = false;
+      let uniformSince = null;
+      let pendingCorruption = null;
+      let nextCorruptionAt = 0;
+      let lastFrameTime = 0;
+      let reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      function randomState() {
+        return Math.random() < 0.5 ? 0 : 1;
+      }
+
+      function makeRandomBoard() {
+        const next = Array.from({ length: gridSize * gridSize }, () => ({
+          state: randomState(),
+          animStart: -Infinity
+        }));
+
+        const first = next[0].state;
+        const alreadyUniform = next.every(tile => tile.state === first);
+        if (alreadyUniform && next.length > 1) {
+          const index = Math.floor(Math.random() * next.length);
+          next[index].state = 1 - next[index].state;
+        }
+        return next;
+      }
+
+      function pressure() {
+        return pressureSettings[pressureSelect.value] || pressureSettings.medium;
+      }
+
+      function scheduleNextCorruption(now) {
+        const cfg = pressure();
+        const jitter = cfg.interval * (0.82 + Math.random() * 0.34);
+        nextCorruptionAt = now + jitter;
+      }
+
+      function resetStats(now) {
+        moves = 0;
+        corruptionEvents = 0;
+        startedAt = now;
+        finishedAt = null;
+        won = false;
+        uniformSince = null;
+        pendingCorruption = null;
+        movesEl.textContent = '0';
+        corruptionsEl.textContent = '0';
+        messageText.className = '';
+        messageText.textContent = 'Make every tile match.';
+        scheduleNextCorruption(now);
+      }
+
+      function newGame() {
+        gridSize = Math.max(3, Math.min(12, Number(gridSizeInput.value) || 5));
+        tiles = makeRandomBoard();
+        resetStats(performance.now());
+      }
+
+      function rerollBoard() {
+        tiles = makeRandomBoard();
+        resetStats(performance.now());
+      }
+
+      function currentAnim(tile, now) {
+        const duration = reducedMotion ? 1 : 280;
+        return Math.max(0, Math.min(1, (now - tile.animStart) / duration));
+      }
+
+      function flipTile(index, now, cause) {
+        const tile = tiles[index];
+        if (!tile) return;
+        tile.state = 1 - tile.state;
+        tile.animStart = now;
+        uniformSince = null;
+
+        if (cause === 'player') {
+          moves += 1;
+          movesEl.textContent = String(moves);
+        }
+      }
+
+      function uniqueRandomIndices(count) {
+        const result = new Set();
+        const max = tiles.length;
+        count = Math.max(1, Math.min(count, max));
+        while (result.size < count) {
+          result.add(Math.floor(Math.random() * max));
+        }
+        return [...result];
+      }
+
+      function corruptionTargets() {
+        const cfg = pressure();
+        const pattern = patternSelect.value;
+        let count = cfg.baseCount;
+        if (gridSize >= 8 && pressureSelect.value !== 'low') count += 1;
+
+        if (pattern === 'burst') {
+          return uniqueRandomIndices(Math.min(tiles.length, count + 2));
+        }
+
+        if (pattern === 'cross') {
+          const center = uniqueRandomIndices(1)[0];
+          const row = Math.floor(center / gridSize);
+          const col = center % gridSize;
+          const targetSet = new Set([center]);
+          const candidates = [
+            [row - 1, col], [row + 1, col],
+            [row, col - 1], [row, col + 1]
+          ];
+          for (const [r, c] of candidates) {
+            if (r >= 0 && r < gridSize && c >= 0 && c < gridSize) {
+              targetSet.add(r * gridSize + c);
+            }
+          }
+          return [...targetSet];
+        }
+
+        return uniqueRandomIndices(count);
+      }
+
+      function startCorruption(now) {
+        const cfg = pressure();
+        pendingCorruption = {
+          targets: corruptionTargets(),
+          resolveAt: now + cfg.warning
+        };
+        messageText.className = 'danger';
+        messageText.textContent = 'Corruption incoming…';
+      }
+
+      function resolveCorruption(now) {
+        if (!pendingCorruption) return;
+        for (const index of pendingCorruption.targets) {
+          flipTile(index, now, 'corruption');
+        }
+        corruptionEvents += 1;
+        corruptionsEl.textContent = String(corruptionEvents);
+        pendingCorruption = null;
+        messageText.className = '';
+        messageText.textContent = 'Stabilize the grid.';
+        scheduleNextCorruption(now);
+      }
+
+      function isUniform() {
+        if (!tiles.length) return false;
+        const first = tiles[0].state;
+        for (let i = 1; i < tiles.length; i += 1) {
+          if (tiles[i].state !== first) return false;
+        }
+        return true;
+      }
+
+      function updateWinState(now) {
+        if (won) return;
+        if (isUniform()) {
+          if (uniformSince === null) {
+            uniformSince = now;
+            messageText.className = '';
+            messageText.textContent = 'Hold it…';
+          } else if (now - uniformSince >= 800) {
+            won = true;
+            finishedAt = now;
+            pendingCorruption = null;
+            messageText.className = 'win';
+            messageText.textContent = 'Grid stabilized. You win.';
+          }
+        } else if (uniformSince !== null) {
+          uniformSince = null;
+          messageText.className = '';
+          messageText.textContent = 'Stabilize the grid.';
+        }
+      }
+
+      function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const width = Math.max(1, Math.round(rect.width * dpr));
+        const height = Math.max(1, Math.round(rect.height * dpr));
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+          gl.viewport(0, 0, width, height);
+        }
+      }
+
+      function buildInstanceData(now) {
+        const data = new Float32Array(tiles.length * 5);
+        const cell = 2 / gridSize;
+        const warned = new Set(pendingCorruption ? pendingCorruption.targets : []);
+
+        let p = 0;
+        for (let row = 0; row < gridSize; row += 1) {
+          for (let col = 0; col < gridSize; col += 1) {
+            const index = row * gridSize + col;
+            const tile = tiles[index];
+            const x = -1 + cell * (col + 0.5);
+            const y = 1 - cell * (row + 0.5);
+
+            data[p++] = x;
+            data[p++] = y;
+            data[p++] = tile.state;
+            data[p++] = currentAnim(tile, now);
+            data[p++] = warned.has(index) ? 1 : 0;
+          }
+        }
+        return data;
+      }
+
+      function render(now) {
+        resizeCanvas();
+
+        if (!won) {
+          if (pendingCorruption && now >= pendingCorruption.resolveAt) {
+            resolveCorruption(now);
+          } else if (!pendingCorruption && now >= nextCorruptionAt) {
+            startCorruption(now);
+          }
+        }
+
+        updateWinState(now);
+
+        const elapsed = ((finishedAt ?? now) - startedAt) / 1000;
+        timeEl.textContent = elapsed.toFixed(1) + 's';
+
+        const instanceData = buildInstanceData(now);
+        gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, instanceData, gl.DYNAMIC_DRAW);
+
+        gl.clearColor(0.025, 0.055, 0.085, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(program);
+        gl.uniform1f(uGrid, gridSize);
+        gl.uniform1f(uTime, now / 1000);
+        gl.bindVertexArray(vao);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, tiles.length);
+        gl.bindVertexArray(null);
+
+        lastFrameTime = now;
+        requestAnimationFrame(render);
+      }
+
+      function indexFromPointer(event) {
+        const rect = canvas.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width;
+        const y = (event.clientY - rect.top) / rect.height;
+        if (x < 0 || x >= 1 || y < 0 || y >= 1) return -1;
+        const col = Math.floor(x * gridSize);
+        const row = Math.floor(y * gridSize);
+        return row * gridSize + col;
+      }
+
+      canvas.addEventListener('pointerdown', event => {
+        if (won) return;
+        const index = indexFromPointer(event);
+        if (index >= 0) {
+          flipTile(index, performance.now(), 'player');
+          canvas.focus({ preventScroll: true });
+        }
+      });
+
+      canvas.addEventListener('keydown', event => {
+        if (event.key.toLowerCase() === 'r') {
+          event.preventDefault();
+          rerollBoard();
+        }
+      });
+
+      gridSizeInput.addEventListener('input', () => {
+        const size = Math.max(3, Math.min(12, Number(gridSizeInput.value) || 5));
+        gridSizeValue.textContent = size + '×' + size;
+      });
+
+      newGameBtn.addEventListener('click', newGame);
+      rerollBtn.addEventListener('click', rerollBoard);
+
+      pressureSelect.addEventListener('change', () => {
+        if (!won) scheduleNextCorruption(performance.now());
+      });
+
+      patternSelect.addEventListener('change', () => {
+        pendingCorruption = null;
+        if (!won) scheduleNextCorruption(performance.now());
+      });
+
+      const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+      if (typeof motionQuery.addEventListener === 'function') {
+        motionQuery.addEventListener('change', event => {
+          reducedMotion = event.matches;
+        });
+      }
+
+      if ('ResizeObserver' in window) {
+        new ResizeObserver(resizeCanvas).observe(canvas);
+      } else {
+        window.addEventListener('resize', resizeCanvas);
+      }
+
+      newGame();
+      requestAnimationFrame(render);
+    })();
+  </script>
+</body>
+</html>
