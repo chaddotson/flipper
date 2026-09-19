@@ -127,6 +127,7 @@
     }
 
     .message .danger { color: #ffd2cb; border-color: rgba(255, 122, 102, 0.38); }
+    .message .loss { color: #fff0ed; border-color: rgba(255, 122, 102, 0.72); }
     .message .win { color: #bffbf0; border-color: rgba(110, 231, 216, 0.46); }
 
     .stats {
@@ -269,7 +270,8 @@
 
     .state-a { background: #18283a; }
     .state-b { background: #7fe7d7; }
-    .corrupt { background: #ff7a66; }
+    .warning { background: #ff7a66; }
+    .corrupt { background: #a5283c; }
 
     .error {
       display: none;
@@ -300,7 +302,7 @@
     <section class="play-area" aria-labelledby="game-title">
       <p class="eyebrow">WebGL puzzle</p>
       <h1 id="game-title">FlipGrid // Corruption</h1>
-      <p class="subtitle">Flip tiles until the whole grid matches. Corruption periodically warns, then flips tiles against you.</p>
+      <p class="subtitle">Flip tiles until the whole grid matches. Corruption spreads faster over time; lose if it consumes the whole board.</p>
 
       <div id="error" class="error" role="alert"></div>
 
@@ -359,12 +361,13 @@
 
       <div class="how-to">
         <strong style="color:#e8f3fc">Goal</strong><br />
-        Get every tile into either the dark state or the light state. A win only locks in after the board stays uniform briefly, so a late corruption can still break it.
+        Get every tile into either the dark state or the light state. Click a corrupted tile to clear it while flipping it. A win only locks in after the board stays uniform briefly. Corruption spreads faster at the selected pressure; if it reaches every tile, you lose.
 
         <div class="legend" aria-label="Tile legend">
           <div class="legend-row"><span class="swatch state-a"></span> Dark state</div>
           <div class="legend-row"><span class="swatch state-b"></span> Light state</div>
-          <div class="legend-row"><span class="swatch corrupt"></span> Incoming corruption warning</div>
+          <div class="legend-row"><span class="swatch warning"></span> Incoming corruption warning</div>
+          <div class="legend-row"><span class="swatch corrupt"></span> Corrupted tile</div>
         </div>
       </div>
     </aside>
@@ -464,7 +467,10 @@
           float sheen = 0.08 * (1.0 - clamp(length(v_local - vec2(-0.16, 0.18)), 0.0, 0.7));
           base += sheen * edge;
 
-          if (v_corrupt > 0.5) {
+          if (v_corrupt > 1.5) {
+            vec3 corrupted = vec3(0.58, 0.07, 0.14);
+            base = mix(base, corrupted, 0.72);
+          } else if (v_corrupt > 0.5) {
             float pulse = 0.5 + 0.5 * sin(u_time * 13.0);
             vec3 danger = vec3(1.0, 0.32, 0.20);
             base = mix(base, danger, 0.46 + pulse * 0.34);
@@ -560,9 +566,9 @@
       const uTime = gl.getUniformLocation(program, 'u_time');
 
       const pressureSettings = {
-        low: { interval: 5200, warning: 950, baseCount: 1 },
-        medium: { interval: 3600, warning: 760, baseCount: 1 },
-        high: { interval: 2300, warning: 560, baseCount: 2 }
+        low: { interval: 5200, minInterval: 2600, rampDuration: 150000, warning: 950, baseCount: 1 },
+        medium: { interval: 3600, minInterval: 1500, rampDuration: 105000, warning: 760, baseCount: 1 },
+        high: { interval: 2300, minInterval: 750, rampDuration: 75000, warning: 560, baseCount: 2 }
       };
 
       let gridSize = Number(gridSizeInput.value);
@@ -572,6 +578,7 @@
       let startedAt = performance.now();
       let finishedAt = null;
       let won = false;
+      let lost = false;
       let uniformSince = null;
       let pendingCorruption = null;
       let nextCorruptionAt = 0;
@@ -585,7 +592,8 @@
       function makeRandomBoard() {
         const next = Array.from({ length: gridSize * gridSize }, () => ({
           state: randomState(),
-          animStart: -Infinity
+          animStart: -Infinity,
+          corrupted: false
         }));
 
         const first = next[0].state;
@@ -603,7 +611,10 @@
 
       function scheduleNextCorruption(now) {
         const cfg = pressure();
-        const jitter = cfg.interval * (0.82 + Math.random() * 0.34);
+        const elapsed = Math.max(0, now - startedAt);
+        const progress = Math.min(1, elapsed / cfg.rampDuration);
+        const interval = cfg.interval + (cfg.minInterval - cfg.interval) * progress;
+        const jitter = interval * (0.82 + Math.random() * 0.34);
         nextCorruptionAt = now + jitter;
       }
 
@@ -613,6 +624,7 @@
         startedAt = now;
         finishedAt = null;
         won = false;
+        lost = false;
         uniformSince = null;
         pendingCorruption = null;
         movesEl.textContent = '0';
@@ -641,6 +653,8 @@
       function flipTile(index, now, cause) {
         const tile = tiles[index];
         if (!tile) return;
+        const clearedCorruption = cause === 'player' && tile.corrupted;
+        if (clearedCorruption) tile.corrupted = false;
         tile.state = 1 - tile.state;
         tile.animStart = now;
         uniformSince = null;
@@ -648,15 +662,20 @@
         if (cause === 'player') {
           moves += 1;
           movesEl.textContent = String(moves);
+          if (clearedCorruption && !pendingCorruption) {
+            messageText.className = '';
+            messageText.textContent = 'Corruption cleared.';
+          }
         }
       }
 
-      function uniqueRandomIndices(count) {
+      function uniqueRandomIndices(count, candidates = tiles.map((_, index) => index)) {
         const result = new Set();
-        const max = tiles.length;
+        const max = candidates.length;
+        if (max === 0) return [];
         count = Math.max(1, Math.min(count, max));
         while (result.size < count) {
-          result.add(Math.floor(Math.random() * max));
+          result.add(candidates[Math.floor(Math.random() * max)]);
         }
         return [...result];
       }
@@ -664,15 +683,19 @@
       function corruptionTargets() {
         const cfg = pressure();
         const pattern = patternSelect.value;
+        const uncorrupted = tiles
+          .map((tile, index) => tile.corrupted ? -1 : index)
+          .filter(index => index >= 0);
         let count = cfg.baseCount;
         if (gridSize >= 8 && pressureSelect.value !== 'low') count += 1;
 
         if (pattern === 'burst') {
-          return uniqueRandomIndices(Math.min(tiles.length, count + 2));
+          return uniqueRandomIndices(count + 2, uncorrupted);
         }
 
         if (pattern === 'cross') {
-          const center = uniqueRandomIndices(1)[0];
+          const center = uniqueRandomIndices(1, uncorrupted)[0];
+          if (center === undefined) return [];
           const row = Math.floor(center / gridSize);
           const col = center % gridSize;
           const targetSet = new Set([center]);
@@ -688,7 +711,7 @@
           return [...targetSet];
         }
 
-        return uniqueRandomIndices(count);
+        return uniqueRandomIndices(count, uncorrupted);
       }
 
       function startCorruption(now) {
@@ -705,10 +728,18 @@
         if (!pendingCorruption) return;
         for (const index of pendingCorruption.targets) {
           flipTile(index, now, 'corruption');
+          tiles[index].corrupted = true;
         }
         corruptionEvents += 1;
         corruptionsEl.textContent = String(corruptionEvents);
         pendingCorruption = null;
+        if (tiles.length && tiles.every(tile => tile.corrupted)) {
+          lost = true;
+          finishedAt = now;
+          messageText.className = 'loss';
+          messageText.textContent = 'Board fully corrupted. You lose.';
+          return;
+        }
         messageText.className = '';
         messageText.textContent = 'Stabilize the grid.';
         scheduleNextCorruption(now);
@@ -724,7 +755,7 @@
       }
 
       function updateWinState(now) {
-        if (won) return;
+        if (won || lost) return;
         if (isUniform()) {
           if (uniformSince === null) {
             uniformSince = now;
@@ -773,7 +804,7 @@
             data[p++] = y;
             data[p++] = tile.state;
             data[p++] = currentAnim(tile, now);
-            data[p++] = warned.has(index) ? 1 : 0;
+            data[p++] = warned.has(index) ? 1 : tile.corrupted ? 2 : 0;
           }
         }
         return data;
@@ -782,7 +813,7 @@
       function render(now) {
         resizeCanvas();
 
-        if (!won) {
+        if (!won && !lost) {
           if (pendingCorruption && now >= pendingCorruption.resolveAt) {
             resolveCorruption(now);
           } else if (!pendingCorruption && now >= nextCorruptionAt) {
@@ -824,7 +855,7 @@
       }
 
       canvas.addEventListener('pointerdown', event => {
-        if (won) return;
+        if (won || lost) return;
         const index = indexFromPointer(event);
         if (index >= 0) {
           flipTile(index, performance.now(), 'player');
@@ -848,12 +879,12 @@
       rerollBtn.addEventListener('click', rerollBoard);
 
       pressureSelect.addEventListener('change', () => {
-        if (!won) scheduleNextCorruption(performance.now());
+        if (!won && !lost) scheduleNextCorruption(performance.now());
       });
 
       patternSelect.addEventListener('change', () => {
         pendingCorruption = null;
-        if (!won) scheduleNextCorruption(performance.now());
+        if (!won && !lost) scheduleNextCorruption(performance.now());
       });
 
       const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
